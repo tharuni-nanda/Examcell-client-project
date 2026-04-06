@@ -301,29 +301,34 @@ def promote_batch(request, batch_id):
             )           
             return Response({"message": f"Promoted to {next_level}"})
 
-        # E4 -> Completed
-        if current == "E4":
-            batch.current_level = "Completed"
-            batch.current_semester = None
+        # E4 Sem2 -> Completed
+        if current == "E4" and batch.current_semester == "Sem2":
+
             batch.status = "Completed"
             batch.current_academic_year = compute_academic_year(batch.start_year, "E4")
             batch.save()
-            #active exams kill after batch promotion 
+
+            # deactivate active exams
             ExamStatus.objects.filter(batch=batch, is_active=True).update(is_active=False)
-            # activity shows after promotions 
+
+            # activity log
             ActivityLog.objects.create(
                 action_type="BATCH_COMPLETE",
                 description=f"{batch.batch_id} marked completed",
                 batch=batch,
-                level="Completed",
+                level=batch.current_level,   # keep E4
+                semester=batch.current_semester,
                 created_by=request.user
-            )       
+            )
+
+            # notification
             Notification.objects.create(
                 title="Batch Completed",
                 message=f"{batch.batch_id} marked as Completed.",
                 batch=batch,
-                level="Completed"
-            )  
+                level=batch.current_level   # VERY IMPORTANT
+            )
+
             return Response({"message": "Batch marked Completed"})
 
         return Response({"error": "Invalid promotion state"}, status=400)
