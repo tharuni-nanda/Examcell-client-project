@@ -561,6 +561,7 @@ def list_marks(request):
     semester = request.GET.get("semester")
     level = request.GET.get("level")
     subject_code = request.GET.get("subject")
+    section = request.GET.get("section")
 
     qs = Marks.objects.select_related(
         "enrollment__student",
@@ -583,7 +584,9 @@ def list_marks(request):
         subject_obj = Subject.objects.filter(code=subject_code).first()
         if subject_obj and subject_obj.branch:
             qs = qs.filter(enrollment__student__branch=subject_obj.branch)
-
+    
+    if section:
+        qs = qs.filter(enrollment__student__section=section)
 
     data = []
 
@@ -614,6 +617,7 @@ def list_marks(request):
             "name": m.enrollment.student.name,
             "branch": m.enrollment.student.branch,
             "semester": m.enrollment.semester,
+            "section": m.enrollment.student.section,
             "subject_type": m.enrollment.subject.subject_type,
             "exam_scheme": m.enrollment.subject.exam_scheme,
             "credits": m.enrollment.subject.credits,
@@ -1529,3 +1533,96 @@ def bulk_upload_marks(request):
         "updated": updated,
         "errors": errors
     })
+
+#--------------- uplode section in batch management section in student tab---------------------------
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+def upload_sections(request):
+    import csv
+
+    file = request.FILES.get("file")
+    batch_id = request.data.get("batch")   # IMPORTANT
+    semester = request.data.get("semester") 
+
+    if not file:
+        return Response({"error": "File required"}, status=400)
+
+    decoded = file.read().decode("utf-8-sig").splitlines()
+    reader = csv.DictReader(decoded)
+
+    updated = 0
+    errors = []
+
+    for row in reader:
+        student_id = row.get("student_id")
+        section = row.get("section")
+
+        if not student_id or not section:
+            errors.append("Missing data")
+            continue
+
+        try:
+            student = Student.objects.filter(
+                student_id=student_id,
+                batch__batch_id=batch_id
+            ).first()
+
+            if not student:
+                errors.append(f"{student_id} not found in batch {batch_id}")
+                continue
+
+            student.section = section.strip().upper()
+            student.save()
+            updated += 1
+
+        except Student.DoesNotExist:
+            errors.append(f"{student_id} not found")
+
+    #  Activity Log (ONLY ONCE)
+    if updated > 0:
+        batch = Batch.objects.filter(batch_id=batch_id).first()
+        user_label = get_user_label(request.user)
+
+        ActivityLog.objects.create(
+            action_type="UPLOAD_SECTIONS",
+            description=f"{updated} students assigned sections for {batch_id} by {user_label}",
+            batch=batch,
+            level=batch.current_level if batch else "",
+            semester=batch.current_semester if batch else "",
+            created_by=request.user
+        )
+
+    return Response({
+        "updated": updated,
+        "errors": errors
+    })
+#get sections from enrollments
+'''@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def get_sections(request):
+    batch = request.GET.get("batch")
+    semester = request.GET.get("semester")
+
+    enrollments = Enrollment.objects.filter(
+        batch__batch_id=batch,
+        semester=semester,
+        section__isnull=False   #IMPORTANT
+    ).exclude(section="")       #IMPORTANT
+
+    sections = enrollments.values_list("section", flat=True).distinct()
+
+    return Response(sorted(sections))'''
+#get sections from the students
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def get_sections(request):
+    batch = request.GET.get("batch")
+
+    students = Student.objects.filter(
+        batch__batch_id=batch,
+        section__isnull=False
+    ).exclude(section="")
+
+    sections = students.values_list("section", flat=True).distinct()
+
+    return Response(sorted(sections))

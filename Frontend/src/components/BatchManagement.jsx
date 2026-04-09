@@ -66,6 +66,8 @@ export default function BatchManagement() {
   //for exam activity
   const [selectedExam, setSelectedExam] = useState("");
   const [activeExam, setActiveExam] = useState(null);
+  // for section in student tab
+  const [sectionFile, setSectionFile] = useState(null);
 
   // ---------- FETCH ----------
   useEffect(() => {
@@ -306,7 +308,31 @@ export default function BatchManagement() {
       alert("Error creating batch: " + (err.response?.data?.error || err.message));
     }
   };
+  // ------------sections list bulk uplode of students--------------------
+  const handleUploadSections = async () => {
+    if (!sectionFile) {
+      alert("Upload CSV first");
+      return;
+    }
 
+    //  ADD HERE
+    const confirmUpload = window.confirm(
+      "This will overwrite previous section data. Continue?"
+    );
+
+    if (!confirmUpload) return;
+
+    const fd = new FormData();
+    fd.append("file", sectionFile);
+    fd.append("batch", modalBatchState?.batch_id);
+
+    try {
+      const res = await api.post("/upload-sections/", fd);
+      alert(`Updated: ${res.data.updated}`);
+    } catch (err) {
+      alert("Upload failed");
+    }
+  };
   // ---------- PROMOTE ----------
   const openPromoteModal = (idx) => {
     setPromoteBatchIdx(idx);
@@ -711,6 +737,21 @@ const totalStudents = activeStudents + completedStudents;
 
                   {modalTab === "students" && (
                       <div>
+                        <div className="flex items-center gap-2 mb-4">
+                          <input
+                            type="file"
+                            accept=".csv"
+                            onChange={(e) => setSectionFile(e.target.files[0])}
+                            className="text-xs"
+                          />
+
+                          <button
+                            onClick={handleUploadSections}
+                            className="bg-purple-600 text-white px-3 py-1 rounded text-xs hover:bg-purple-700"
+                          >
+                            Upload Sections
+                          </button>
+                        </div>
                         {(() => {
                           const students = activeBatch.students || [];
 

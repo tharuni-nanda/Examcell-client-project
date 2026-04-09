@@ -226,7 +226,7 @@ class Enrollment(models.Model):
     student = models.ForeignKey(Student, on_delete=models.CASCADE)
     subject = models.ForeignKey(Subject, on_delete=models.CASCADE)
     batch = models.ForeignKey(Batch, on_delete=models.CASCADE)
-
+    section = models.CharField(max_length=5, null=True, blank=True)
     semester = models.CharField(max_length=10)
 
     class Meta:

@@ -19,7 +19,9 @@ urlpatterns = [
     path('faculty/login/', faculty_login),
 
     path("batches/add/", add_batch),# POST create batch + upload initial CSV
-    path("batches/", list_batches),     
+    path("batches/", list_batches),  
+    path("upload-sections/", views.upload_sections),#uplode sections csv 
+    path("sections/", views.get_sections),   
     #academic management branch filter
     #path("batches/simple/", views.list_batches_simple),                      
       # GET list
