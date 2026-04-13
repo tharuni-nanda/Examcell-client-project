@@ -204,7 +204,7 @@ def promote_batch(request, batch_id):
                 title="Batch Promoted",
                 message=f"{batch.batch_id} promoted to PUC2 - Sem1. Please create subjects.",
                 batch=batch,
-                level=next_level
+                level="PUC2"
             )
             return Response({"message": "Promoted to PUC2 (no CSV required)"})
 
@@ -266,7 +266,7 @@ def promote_batch(request, batch_id):
                 title="Batch Promoted",
                 message=f"{batch.batch_id} promoted to E1 - Sem1. Please create subjects.",
                 batch=batch,
-                level=next_level
+                level="E1"
             )
             return Response({
                 "message": "Promoted to E1",
@@ -622,6 +622,8 @@ def list_marks(request):
             "exam_scheme": m.enrollment.subject.exam_scheme,
             "credits": m.enrollment.subject.credits,
             "level": m.enrollment.subject.level,
+            
+            
 
             # THEORY FIELDS
             "mid1": m.mid1,
@@ -676,9 +678,7 @@ def marks_to_grade(total, credits):
 @api_view(["POST"])
 @permission_classes([IsAuthenticated])
 def calculate_results(request):
-    """
-    Calculate SGPA & CGPA for a student
-    """
+
     student_id = request.data.get("student_id")
     semester = request.data.get("semester")
 
@@ -691,33 +691,61 @@ def calculate_results(request):
 
     for enr in enrollments:
         marks = Marks.objects.get(enrollment=enr)
+        subject = enr.subject
 
         internal = calculate_internal(marks)
-        total = internal + marks.est
 
-        #grade = marks_to_grade(total)
-        credits = m.enrollment.subject.credits
-        grade = marks_to_grade(total, credits)
+        # TOTAL CALCULATION
+        if subject.subject_type == "THEORY":
+            total = (internal or 0) + (marks.est or 0)
+
+            if marks.est is None or marks.est < 18:
+                grade = "F"
+            else:
+                grade = marks_to_grade(total, subject.credits)
+
+        elif subject.subject_type in ["LAB", "PROJECT", "ELECTIVE"]:
+            total = (marks.internal or 0) + (marks.external or 0)
+
+            if marks.external is None or marks.external < 18:
+                grade = "F"
+            else:
+                grade = marks_to_grade(total, subject.credits)
+
+        elif subject.subject_type == "INTERNSHIP":
+            total = marks.external or 0
+
+            if marks.external is None or marks.external < 18:
+                grade = "F"
+            else:
+                grade = marks_to_grade(total, subject.credits)
+
+        else:
+            total = 0
+            grade = "F"
 
         grade_point = GRADE_MAP[grade]
 
         subjects_data.append(
             type("obj", (), {
                 "grade_point": grade_point,
-                "credits": enr.subject.credits
+                "credits": subject.credits
             })
         )
 
     sgpa = calculate_sgpa(subjects_data)
 
-    prev = Result.objects.filter(student__student_id=student_id)
+    student = Student.objects.get(student_id=student_id)
+
+    prev = Result.objects.filter(student=student)
+
     cgpa = round(
         (sum(r.sgpa for r in prev) + sgpa) / (prev.count() + 1),
         2
     )
 
     Result.objects.create(
-        student_id=student_id,
+        student=student,
         semester=semester,
         sgpa=sgpa,
         cgpa=cgpa
@@ -903,18 +931,29 @@ def save_marks(request):
     for field in ["mid1", "mid2", "mid3", "at1", "at2", "at3", "at4", "est","internal","external"]:
         if field in request.data:
             old = getattr(marks, field)
-            new = float(request.data[field])
+            value = request.data[field]
+            #HANDLE AB
+            if isinstance(value, str) and value.upper() == "AB":
+                new_value = None
 
-            if old != new:
+            elif value in [None, ""]:
+                new_value = None
+
+            else:
+                try:
+                    new_value = float(value)
+                except:
+                    return Response({"error": f"Invalid value for {field}"}, status=400)
+            if old != new_value:
                 MarksHistory.objects.create(
                     marks=marks,
                     field=field,
                     old_value=old,
-                    new_value=new,
+                    new_value=new_value,
                     changed_by=request.user if request.user.is_authenticated else None
                 )
 
-                setattr(marks, field, new)
+                setattr(marks, field, new_value)
 
     if request.user.is_authenticated:
         marks.entered_by = request.user
@@ -996,6 +1035,9 @@ from reportlab.lib.units import inch
 from reportlab.platypus import SimpleDocTemplate
 from reportlab.lib.pagesizes import A4
 
+#handle absentees
+def display_mark(value):
+    return "AB" if value is None else value
 #@api_view(["GET"])
 @api_view(["GET"])
 def export_marks_pdf(request):
@@ -1197,9 +1239,9 @@ def export_marks_pdf(request):
 
                 if scheme == "MID15_AT4":
                     row.extend([
-                        m.mid1, m.mid2, m.mid3,
-                        m.at1, m.at2, m.at3, m.at4,
-                        m.est,
+                        display_mark(m.mid1), display_mark(m.mid2), display_mark(m.mid3),
+                        display_mark(m.at1), display_mark(m.at2), display_mark(m.at3), display_mark(m.at4),
+                        display_mark(m.est),
                         round(internal, 2),
                         round(total, 2),
                         grade
@@ -1207,8 +1249,8 @@ def export_marks_pdf(request):
 
                 elif scheme == "MID20":
                     row.extend([
-                        m.mid1, m.mid2, m.mid3,
-                        m.est,
+                        display_mark(m.mid1), display_mark(m.mid2), display_mark(m.mid3),
+                        display_mark(m.est),
                         round(internal, 2),
                         round(total, 2),
                         grade
@@ -1216,8 +1258,8 @@ def export_marks_pdf(request):
 
                 elif scheme == "MID40":
                     row.extend([
-                        m.mid1, m.mid2,
-                        m.est,
+                        display_mark(m.mid1), display_mark(m.mid2),
+                        display_mark(m.est),
                         round(internal, 2),
                         round(total, 2),
                         grade
@@ -1225,38 +1267,43 @@ def export_marks_pdf(request):
 
                 elif scheme == "ZERO_CREDIT":
                     row.extend([
-                        m.est,
+                        display_mark(m.est),
                         round(total, 2),
                         grade
                     ])
 
             else:
                 row.extend([
-                    m.internal,
-                    m.external,
+                    display_mark(m.internal),
+                    display_mark(m.external),
                     round(total, 2),
                     grade
                 ])
         elif exam_type == "MID1":
-            row.append(m.mid1)
+            row.append(display_mark(m.mid1))
 
         elif exam_type == "MID2":
-            row.append(m.mid2)
+            row.append(display_mark(m.mid2))
 
         elif exam_type == "MID3":
             if subject.exam_scheme in ["MID15_AT4", "MID20"]:
-                row.append(m.mid3)
+                row.append(display_mark(m.mid3))
             else:
                 row.append("-")
 
         elif exam_type == "ATS":
             if subject.exam_scheme == "MID15_AT4":
-                row.extend([m.at1, m.at2, m.at3, m.at4])
+                row.extend([
+                    display_mark(m.at1),
+                    display_mark(m.at2),
+                    display_mark(m.at3),
+                    display_mark(m.at4)
+                ])
             else:
                 row.extend(["-", "-", "-", "-"])
 
         elif exam_type == "EST":
-            row.append(m.est)
+            row.append(display_mark(m.est))
 
         elif exam_type == "INTERNAL":
             row.append(round(internal, 2))
@@ -1483,29 +1530,54 @@ def bulk_upload_marks(request):
             marks, created = Marks.objects.get_or_create(enrollment=enrollment)
 
             # Process marks fields
+            valid_fields = ["mid1","mid2","mid3","at1","at2","at3","at4","est","internal","external"]
+
+            row_updated = False  # moved outside loop
+
             for key, value in row.items():
-                if key != "student_id" and value != "":
+
+                # skip student_id column
+                if key == student_key:
+                    continue
+
+                # skip invalid columns
+                if key not in valid_fields:
+                    continue
+
+                # HANDLE AB
+                if isinstance(value, str) and value.upper() == "AB":
+                    num_value = None
+
+                elif value in ["", None]:
+                    num_value = None
+
+                else:
                     try:
                         num_value = float(value)
                     except:
                         errors.append(f"{student_id}: invalid value '{value}' for {key}")
                         continue
 
-                    old = getattr(marks, key, None)
+                old = getattr(marks, key, None)
 
-                    if old != num_value:
-                        MarksHistory.objects.create(
-                            marks=marks,
-                            field=key,
-                            old_value=old,
-                            new_value=num_value,
-                            changed_by=request.user
-                        )
+                if old != num_value:
+                    row_updated = True
+
+                    MarksHistory.objects.create(
+                        marks=marks,
+                        field=key,
+                        old_value=old,
+                        new_value=num_value,
+                        changed_by=request.user
+                    )
 
                     setattr(marks, key, num_value)
 
             marks.entered_by = request.user
             marks.save()
+            if row_updated:
+                updated += 1
+            
 
         except Enrollment.DoesNotExist:
             errors.append(f"{student_id} enrollment not found")

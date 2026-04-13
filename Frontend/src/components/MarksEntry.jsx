@@ -735,34 +735,58 @@ export default function MarksEntry() {
 
                             <td key={field} className="p-3 text-center">
                               <input
-                                type="number"
+                                type="text"
                                 disabled={
                                   batchStatus === "Completed" ||
                                   (userRole === "faculty" && s.level !== level)
                                 }
-                                value={s[field] ?? ""}
-                                onChange={(e) =>{
-                                  const newValue = Number(e.target.value);
-                                    // Update UI immediately
+                                value={s[field] === null ? "AB" : s[field] ?? ""}
+                                onChange={(e) => {
+                                  let value = e.target.value;
+
+                                  if (value === "A" || value === "a") {
+                                    setStudents(prev =>
+                                      prev.map(st =>
+                                        st.marks_id === s.marks_id
+                                          ? { ...st, [field]: "A" }
+                                          : st
+                                      )
+                                    );
+                                    return;
+                                  }
+
+                                  if (value.toUpperCase() === "AB") {
+                                    value = "AB";
+                                  }
+                                  else if (value === "") {
+                                    value = "";
+                                  }
+                                  else if (/^\d+$/.test(value)) {
+                                    value = Number(value);
+                                  }
+                                  else {
+                                    return;
+                                  }
+
+                                  const newVal = value === "AB" ? null : value;
+                                  const current = s[field] ?? null;
+
+                                  //prevent unnecessary API call
+                                  if (current === newVal) return;
+
                                   setStudents(prev =>
                                     prev.map(st =>
                                       st.marks_id === s.marks_id
-                                        ? { ...st, [field]: newValue }
+                                        ? { ...st, [field]: newVal }
                                         : st
                                     )
                                   );
-                                  console.log("Sending marks_id:", s.marks_id);
-                                  //Save to backend
+
                                   api.post("/marks/save/", {
                                     marks_id: s.marks_id,
-                                    [field]: newValue,
+                                    [field]: value === "AB" ? "AB" : value
                                   })
-                                  .catch(err => {
-                                      if (err.response?.status === 403) {
-                                        alert("This batch is locked (Completed).");
-                                      }
-                                    })
-                                  .then(res => {
+                                  .then(() => {
                                     const now = new Date().toISOString();
 
                                     setStudents(prev =>
@@ -772,8 +796,12 @@ export default function MarksEntry() {
                                           : st
                                       )
                                     );
+                                  })
+                                  .catch(err => {
+                                    if (err.response?.status === 403) {
+                                      alert("This batch is locked (Completed).");
+                                    }
                                   });
-
                                 }}
                                 className="w-16 border rounded px-2 py-1 text-center"
                               />
@@ -866,8 +894,8 @@ export default function MarksEntry() {
                           }`}
                         >
                           <td className="p-2">{h.field.toUpperCase()}</td>
-                          <td className="p-2 text-center text-red-600">{h.old}</td>
-                          <td className="p-2 text-center text-green-600">{h.new}</td>
+                          <td className="p-2 text-center text-red-600">{h.old === null ? "AB" : h.old}</td>
+                          <td className="p-2 text-center text-green-600">{h.new === null ? "AB" : h.new}</td>
                           <td className="p-2">{h.by || "-"}</td>
                           <td className="p-2">
                             {h.role === "coe" ? "COE" : "Faculty"}

@@ -237,19 +237,19 @@ class Enrollment(models.Model):
 class Marks(models.Model):
     enrollment = models.OneToOneField(Enrollment, on_delete=models.CASCADE)
 
-    mid1 = models.FloatField(default=0)
-    mid2 = models.FloatField(default=0)
-    mid3 = models.FloatField(default=0)
+    mid1 = models.FloatField(null=True, blank=True)
+    mid2 = models.FloatField(null=True, blank=True)
+    mid3 = models.FloatField(null=True, blank=True)
 
-    at1 = models.FloatField(default=0)
-    at2 = models.FloatField(default=0)
-    at3 = models.FloatField(default=0)
-    at4 = models.FloatField(default=0)
+    at1 = models.FloatField(null=True, blank=True)
+    at2 = models.FloatField(null=True, blank=True)
+    at3 = models.FloatField(null=True, blank=True)
+    at4 = models.FloatField(null=True, blank=True)
 
-    est = models.FloatField(default=0)
-    internal = models.FloatField(default=0)
-    external = models.FloatField(default=0)
-
+    est = models.FloatField(null=True, blank=True)
+    internal = models.FloatField(null=True, blank=True)
+    external = models.FloatField(null=True, blank=True)
+    #is_absent = models.BooleanField(default=False)
 
     entered_by = models.ForeignKey(
         settings.AUTH_USER_MODEL,
@@ -273,8 +273,8 @@ class Result(models.Model):
 class MarksHistory(models.Model):
     marks = models.ForeignKey(Marks, on_delete=models.CASCADE, related_name="history")
     field = models.CharField(max_length=20)
-    old_value = models.FloatField()
-    new_value = models.FloatField()
+    old_value = models.FloatField(null=True, blank=True)
+    new_value = models.FloatField(null=True, blank=True)
     changed_by = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.SET_NULL,
