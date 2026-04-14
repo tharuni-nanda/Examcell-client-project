@@ -274,6 +274,7 @@ export default function MarksEntry() {
           level,
           subject: selectedSubject?.code,
           exam_type: examType,
+          section: sectionFilter || null,
         },
         responseType: "blob",   // VERY IMPORTANT
       });

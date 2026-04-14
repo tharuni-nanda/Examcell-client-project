@@ -1047,6 +1047,8 @@ def export_marks_pdf(request):
     level = request.GET.get("level")
     subject_code = request.GET.get("subject")
     exam_type = request.GET.get("exam_type", "ALL")
+    section = request.GET.get("section")
+    #print(request.GET) # for debugg purpose
 
     # ---------------- SUBJECT ----------------
     subject = None
@@ -1084,6 +1086,9 @@ def export_marks_pdf(request):
         if subject_obj and subject_obj.branch:
             qs = qs.filter(enrollment__student__branch=subject_obj.branch)
 
+    if section is not None and section != "":
+        qs = qs.filter(enrollment__student__section=section)
+    #print("SECTION RECEIVED:", section) for debug purpose
 
     qs = qs.order_by("enrollment__student__student_id")
 
@@ -1114,7 +1119,9 @@ def export_marks_pdf(request):
         elements.append(Paragraph(f"Subject Code: {subject_code or '-'}", styles["Normal"]))
 
     elements.append(Paragraph(f"Exam Type: {exam_type}", styles["Normal"]))
+    elements.append(Paragraph(f"Section: {section or 'All'}", styles["Normal"]))
     elements.append(Spacer(1, 0.3 * inch))
+    
 
     # ---------------- DETECT MODE ----------------
     #is_puc = batch and batch.current_level.startswith("PUC")
