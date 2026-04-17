@@ -230,7 +230,7 @@ class Enrollment(models.Model):
     semester = models.CharField(max_length=10)
 
     class Meta:
-        unique_together = ("student", "subject", "semester")
+        unique_together = ("student", "subject", "semester", "batch")
 
 
 # marks model
@@ -249,7 +249,14 @@ class Marks(models.Model):
     est = models.FloatField(null=True, blank=True)
     internal = models.FloatField(null=True, blank=True)
     external = models.FloatField(null=True, blank=True)
+    #handle absenties
     #is_absent = models.BooleanField(default=False)
+    mid1_absent = models.BooleanField(default=False)
+    mid2_absent = models.BooleanField(default=False)
+    mid3_absent = models.BooleanField(default=False)
+    est_absent = models.BooleanField(default=False)
+    internal_absent = models.BooleanField(default=False)
+    external_absent = models.BooleanField(default=False)
 
     entered_by = models.ForeignKey(
         settings.AUTH_USER_MODEL,
@@ -281,6 +288,8 @@ class MarksHistory(models.Model):
         null=True
     )
     changed_at = models.DateTimeField(auto_now_add=True)
+    was_absent = models.BooleanField(default=False)
+    is_absent = models.BooleanField(default=False)
 
 
 # -------------------- FOR DASHBOARD SECTION ----------------------
@@ -322,6 +331,8 @@ class ActivityLog(models.Model):
         ("PDF_EXPORT", "PDF Export"),
         ("BULK_UPLOAD", "Bulk Upload"),
         ("NOTIFICATION", "Notification"),
+        ("ELECTIVE_ASSIGN", "Elective Assignment"),
+        ("UPLOAD_SECTIONS", "Upload Sections"),
     ]
 
     action_type = models.CharField(max_length=30, choices=ACTION_TYPES)

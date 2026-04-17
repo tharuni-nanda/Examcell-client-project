@@ -22,14 +22,10 @@ urlpatterns = [
     path("batches/", list_batches),  
     path("upload-sections/", views.upload_sections),#uplode sections csv 
     path("sections/", views.get_sections),   
-    #academic management branch filter
-    #path("batches/simple/", views.list_batches_simple),                      
+    #academic management elective students list uplode
+    path("electives/upload/", views.upload_elective_students),                     
       # GET list
     path("batches/<str:batch_id>/promote/", promote_batch),
-    #path("batches/<str:batch_id>/promote/", views.promote_batch),
-    #path("batches/<str:batch_id>/upload_students/", views.upload_students),
-    #path("dashboard/stats/", views.dashboard_stats),
-    #path("activity/", views.get_activity_log),
     #marks entry
     path("marks/", list_marks),
     path("marks/save/", save_marks),

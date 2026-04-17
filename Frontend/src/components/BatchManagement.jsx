@@ -328,9 +328,19 @@ export default function BatchManagement() {
 
     try {
       const res = await api.post("/upload-sections/", fd);
-      alert(`Updated: ${res.data.updated}`);
+      alert(
+        `${res.data.message}\n\n` +
+        `Processed: ${res.data.total_rows}\n` +
+        `Updated: ${res.data.updated}\n` +
+        `Failed: ${res.data.error_count}`
+      );
+
     } catch (err) {
-      alert("Upload failed");
+      alert(err.response?.data?.error || "Upload failed");
+
+      if (err.response?.data?.errors) {
+        console.log("Section Errors:", err.response.data.errors);
+      }
     }
   };
   // ---------- PROMOTE ----------

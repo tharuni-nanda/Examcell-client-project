@@ -608,7 +608,20 @@ def list_marks(request):
 
         #grade = marks_to_grade(total)
         credits = m.enrollment.subject.credits
-        grade = marks_to_grade(total, credits)
+        if subject_type in ["LAB", "PROJECT", "ELECTIVE"]:
+            if m.external_absent or m.external is None or m.external < 18:
+                grade = "R"   #CHANGE HERE (Remedial)
+            else:
+                grade = marks_to_grade(total, credits)
+
+        elif subject_type == "THEORY":
+            if m.est_absent or m.est is None or m.est < 18:
+                grade = "R"
+            else:
+                grade = marks_to_grade(total, credits)
+
+        else:
+            grade = marks_to_grade(total, credits)
 
 
         data.append({
@@ -638,8 +651,15 @@ def list_marks(request):
             # LAB / PROJECT / ELECTIVE FIELDS
             "internal": m.internal,
             "external": m.external,
+            #handing AB
+            "mid1_absent": m.mid1_absent,
+            "mid2_absent": m.mid2_absent,
+            "mid3_absent": m.mid3_absent,
 
-            "subject_type": subject_type,
+            "internal_absent": m.internal_absent,
+            "external_absent": m.external_absent,
+            "est_absent": m.est_absent,
+
 
             "total": round(total, 2),
             "grade": grade,
@@ -659,7 +679,8 @@ GRADE_MAP = {
     "C": 7,
     "D": 6,
     "E": 5,
-    "F": 0
+    "F": 0,
+    "R": 0
 }
 
 def marks_to_grade(total, credits):
@@ -699,30 +720,30 @@ def calculate_results(request):
         if subject.subject_type == "THEORY":
             total = (internal or 0) + (marks.est or 0)
 
-            if marks.est is None or marks.est < 18:
-                grade = "F"
+            if marks.est_absent or marks.est is None or marks.est < 18:
+                grade = "R"
             else:
                 grade = marks_to_grade(total, subject.credits)
 
         elif subject.subject_type in ["LAB", "PROJECT", "ELECTIVE"]:
             total = (marks.internal or 0) + (marks.external or 0)
 
-            if marks.external is None or marks.external < 18:
-                grade = "F"
+            if marks.external_absent or marks.external is None or marks.external < 18:
+                grade = "R"
             else:
                 grade = marks_to_grade(total, subject.credits)
 
         elif subject.subject_type == "INTERNSHIP":
             total = marks.external or 0
 
-            if marks.external is None or marks.external < 18:
-                grade = "F"
+            if marks.external_absent or marks.external is None or marks.external < 18:
+                grade = "R"
             else:
                 grade = marks_to_grade(total, subject.credits)
 
         else:
             total = 0
-            grade = "F"
+            grade = "R"
 
         grade_point = GRADE_MAP[grade]
 
@@ -815,8 +836,8 @@ def marks_history(request):
     return Response([
         {
             "field": h.field,
-            "old": h.old_value,
-            "new": h.new_value,
+            "old": "AB" if h.was_absent and h.old_value is None else (h.old_value if h.old_value is not None else ""),
+            "new": "AB" if h.is_absent and h.new_value is None else (h.new_value if h.new_value is not None else ""),
             "by": h.changed_by.college_email if h.changed_by else None,
             "role": h.changed_by.role if h.changed_by else None,
             "at": h.changed_at
@@ -910,7 +931,7 @@ def save_marks(request):
         if request.user.role == "faculty":
             faculty = Faculty.objects.filter(user=request.user).first()
             if not faculty:
-                return Responce({"error":"Faculty profile not configured"}, status=403)
+                return Response({"error":"Faculty profile not configured"}, status=403)
 
             # Restrict level
             if marks.enrollment.batch.current_level != faculty.level:
@@ -927,30 +948,104 @@ def save_marks(request):
     batch = marks.enrollment.batch
     if batch.status == "Completed":
         return Response({"error": "Cannot edit completed batch"}, status=403)
+    # RESET FIRST
+    '''marks.mid1_absent = False
+    marks.mid2_absent = False
+    marks.mid3_absent = False
+    marks.internal_absent = False
+    marks.external_absent = False
+    marks.est_absent = False'''
 
     for field in ["mid1", "mid2", "mid3", "at1", "at2", "at3", "at4", "est","internal","external"]:
         if field in request.data:
+            
             old = getattr(marks, field)
+            #to capture OLD absent state
+            if field.startswith("mid"):
+                old_absent = getattr(marks, f"{field}_absent")
+            elif field == "est":
+                old_absent = marks.est_absent
+            elif field == "external":
+                old_absent = marks.external_absent
+            elif field == "internal":
+                old_absent = marks.internal_absent
+            else:
+                old_absent = False
             value = request.data[field]
             #HANDLE AB
             if isinstance(value, str) and value.upper() == "AB":
                 new_value = None
+                if field.startswith("mid"):
+                    setattr(marks, f"{field}_absent", True)
+
+                elif field == "est":
+                    marks.est_absent = True
+
+                elif field == "external":
+                    marks.external_absent = True
+
+                elif field == "internal":
+                    marks.internal_absent = True
 
             elif value in [None, ""]:
                 new_value = None
 
+                if field.startswith("mid"):
+                    setattr(marks, f"{field}_absent", False)
+
+                elif field == "est":
+                    marks.est_absent = False
+
+                elif field == "external":
+                    marks.external_absent = False
+
+                elif field == "internal":
+                    marks.internal_absent = False
+
             else:
                 try:
                     new_value = float(value)
+
+                    #VALIDATION BASED ON SCHEME
+                    subject = marks.enrollment.subject
+                    scheme = subject.exam_scheme
+
+                    if field.startswith("mid"):
+                        if scheme == "MID15_AT4" and new_value > 15:
+                            return Response({"error": f"{field} max is 15"})
+                        elif scheme == "MID20" and new_value > 20:
+                            return Response({"error": f"{field} max is 20"})
+                        elif scheme == "MID40" and new_value > 40:
+                            return Response({"error": f"{field} max is 40"})
+
+                    # Optional: EST validation
+                    if field == "est" and new_value > 100:
+                        return Response({"error": "EST max is 100"})
+
+                    if field.startswith("mid"):
+                        setattr(marks, f"{field}_absent", False)
+
+                    elif field == "est":
+                        marks.est_absent = False
+
+                    elif field == "external":
+                        marks.external_absent = False
+
+                    elif field == "internal":
+                        marks.internal_absent = False
+
                 except:
                     return Response({"error": f"Invalid value for {field}"}, status=400)
-            if old != new_value:
+                
+            if old != new_value or old_absent != (isinstance(value, str) and value.upper() == "AB"):
                 MarksHistory.objects.create(
                     marks=marks,
                     field=field,
                     old_value=old,
                     new_value=new_value,
-                    changed_by=request.user if request.user.is_authenticated else None
+                    changed_by=request.user if request.user.is_authenticated else None,
+                    was_absent=old_absent,
+                    is_absent = (isinstance(value, str) and value.strip().upper() == "AB")
                 )
 
                 setattr(marks, field, new_value)
@@ -1036,9 +1131,11 @@ from reportlab.platypus import SimpleDocTemplate
 from reportlab.lib.pagesizes import A4
 
 #handle absentees
-def display_mark(value):
-    return "AB" if value is None else value
-#@api_view(["GET"])
+def display_mark(value, is_absent=False):
+    if is_absent:
+        return "AB"
+    return value if value is not None else ""
+
 @api_view(["GET"])
 def export_marks_pdf(request):
 
@@ -1225,7 +1322,21 @@ def export_marks_pdf(request):
         else:
             total = 0
 
-        grade = marks_to_grade(total, subject.credits)
+        #grade = marks_to_grade(total, subject.credits)
+        if subject_type in ["LAB", "PROJECT", "ELECTIVE"]:
+            if m.external_absent or m.external is None or m.external < 18:
+                grade = "R" 
+            else:
+                grade = marks_to_grade(total, subject.credits)
+
+        elif subject_type == "THEORY":
+            if m.est_absent or m.est is None or m.est < 18:
+                grade = "R"
+            else:
+                grade = marks_to_grade(total, subject.credits)
+
+        else:
+            grade = marks_to_grade(total, subject.credits)
 
         # ---- Base row ----
         row = [student.student_id, student.name]
@@ -1246,55 +1357,55 @@ def export_marks_pdf(request):
 
                 if scheme == "MID15_AT4":
                     row.extend([
-                        display_mark(m.mid1), display_mark(m.mid2), display_mark(m.mid3),
+                        display_mark(m.mid1, m.mid1_absent), display_mark(m.mid2, m.mid2_absent), display_mark(m.mid3, m.mid3_absent),
                         display_mark(m.at1), display_mark(m.at2), display_mark(m.at3), display_mark(m.at4),
-                        display_mark(m.est),
-                        round(internal, 2),
+                        display_mark(m.est, m.est_absent),
+                        display_mark(internal),
                         round(total, 2),
                         grade
                     ])
 
                 elif scheme == "MID20":
                     row.extend([
-                        display_mark(m.mid1), display_mark(m.mid2), display_mark(m.mid3),
-                        display_mark(m.est),
-                        round(internal, 2),
+                        display_mark(m.mid1, m.mid1_absent), display_mark(m.mid2, m.mid2_absent), display_mark(m.mid3, m.mid3_absent),
+                        display_mark(m.est, m.est_absent),
+                        display_mark(internal),
                         round(total, 2),
                         grade
                     ])
 
                 elif scheme == "MID40":
                     row.extend([
-                        display_mark(m.mid1), display_mark(m.mid2),
-                        display_mark(m.est),
-                        round(internal, 2),
+                        display_mark(m.mid1, m.mid1_absent), display_mark(m.mid2, m.mid2_absent),
+                        display_mark(m.est, m.est_absent),
+                        display_mark(internal),
                         round(total, 2),
                         grade
                     ])
 
                 elif scheme == "ZERO_CREDIT":
                     row.extend([
-                        display_mark(m.est),
+                        display_mark(m.est, m.est_absent),
                         round(total, 2),
                         grade
                     ])
 
             else:
                 row.extend([
-                    display_mark(m.internal),
-                    display_mark(m.external),
+                    display_mark(m.internal, m.internal_absent),
+                    display_mark(m.external, m.external_absent),
                     round(total, 2),
                     grade
                 ])
         elif exam_type == "MID1":
-            row.append(display_mark(m.mid1))
+            row.append(display_mark(m.mid1, m.mid1_absent))
 
         elif exam_type == "MID2":
-            row.append(display_mark(m.mid2))
+            row.append(display_mark(m.mid2, m.mid2_absent))
 
         elif exam_type == "MID3":
             if subject.exam_scheme in ["MID15_AT4", "MID20"]:
-                row.append(display_mark(m.mid3))
+                row.append(display_mark(m.mid3, m.mid3_absent))
             else:
                 row.append("-")
 
@@ -1310,10 +1421,10 @@ def export_marks_pdf(request):
                 row.extend(["-", "-", "-", "-"])
 
         elif exam_type == "EST":
-            row.append(display_mark(m.est))
+            row.append(display_mark(m.est, m.est_absent))
 
         elif exam_type == "INTERNAL":
-            row.append(round(internal, 2))
+            row.append(display_mark(internal))
 
         elif exam_type == "TOTAL":
             row.extend([round(total, 2), grade])
@@ -1535,6 +1646,13 @@ def bulk_upload_marks(request):
 
             # Create marks if not exists
             marks, created = Marks.objects.get_or_create(enrollment=enrollment)
+            #RESET BEFORE PROCESSING CSV ROW
+            '''marks.mid1_absent = False
+            marks.mid2_absent = False
+            marks.mid3_absent = False
+            marks.internal_absent = False
+            marks.external_absent = False
+            marks.est_absent = False'''
 
             # Process marks fields
             valid_fields = ["mid1","mid2","mid3","at1","at2","at3","at4","est","internal","external"]
@@ -1555,8 +1673,32 @@ def bulk_upload_marks(request):
                 if isinstance(value, str) and value.upper() == "AB":
                     num_value = None
 
+                    if key.startswith("mid"):
+                        setattr(marks, f"{key}_absent", True)
+
+                    elif key == "est":
+                        marks.est_absent = True
+
+                    elif key == "external":
+                        marks.external_absent = True
+
+                    elif key == "internal":
+                        marks.internal_absent = True
+
                 elif value in ["", None]:
                     num_value = None
+
+                    if key.startswith("mid"):
+                        setattr(marks, f"{key}_absent", False)
+
+                    elif key == "est":
+                        marks.est_absent = False
+
+                    elif key == "external":
+                        marks.external_absent = False
+
+                    elif key == "internal":
+                        marks.internal_absent = False
 
                 else:
                     try:
@@ -1575,7 +1717,8 @@ def bulk_upload_marks(request):
                         field=key,
                         old_value=old,
                         new_value=num_value,
-                        changed_by=request.user
+                        changed_by=request.user,
+                        is_absent = (isinstance(value, str) and value.strip().upper() == "AB")
                     )
 
                     setattr(marks, key, num_value)
@@ -1609,8 +1752,14 @@ def bulk_upload_marks(request):
             created_by=request.user
     )
     return Response({
-        "updated": updated,
-        "errors": errors
+        "message": f"{updated} students Marks updated successfully",
+        "summary": {
+            "total_processed": updated + len(errors),
+            "updated": updated,
+            "failed": len(errors),
+        },
+        "errors": errors[:10],  
+        "status": "success" if updated > 0 else "partial"
     })
 
 #--------------- uplode section in batch management section in student tab---------------------------
@@ -1670,27 +1819,15 @@ def upload_sections(request):
             semester=batch.current_semester if batch else "",
             created_by=request.user
         )
-
+    total_rows = updated + len(errors)
     return Response({
+        "message": f"{updated} students assigned to sections successfully",
         "updated": updated,
-        "errors": errors
+        "error_count": len(errors),
+        "errors": errors[:10],
+        "total_rows": total_rows
     })
-#get sections from enrollments
-'''@api_view(["GET"])
-@permission_classes([IsAuthenticated])
-def get_sections(request):
-    batch = request.GET.get("batch")
-    semester = request.GET.get("semester")
 
-    enrollments = Enrollment.objects.filter(
-        batch__batch_id=batch,
-        semester=semester,
-        section__isnull=False   #IMPORTANT
-    ).exclude(section="")       #IMPORTANT
-
-    sections = enrollments.values_list("section", flat=True).distinct()
-
-    return Response(sorted(sections))'''
 #get sections from the students
 @api_view(["GET"])
 @permission_classes([IsAuthenticated])
@@ -1705,3 +1842,89 @@ def get_sections(request):
     sections = students.values_list("section", flat=True).distinct()
 
     return Response(sorted(sections))
+#--------------------Acadamic management Elective subject selected students-----------------------
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+def upload_elective_students(request):
+    import csv
+
+    file = request.FILES.get("file")
+    subject_code = request.data.get("subject")
+    batch_id = request.data.get("batch")
+    semester = request.data.get("semester")
+
+    if not file:
+        return Response({"error": "CSV file required"}, status=400)
+
+    subject = Subject.objects.filter(code=subject_code).first()
+    if not subject:
+        return Response({"error": "Subject not found"}, status=404)
+
+    # delete the before enrolled students
+    Enrollment.objects.filter(
+        subject=subject,
+        batch__batch_id=batch_id,
+        semester=semester
+    ).delete()
+
+    if not subject:
+        return Response({"error": "Subject not found"}, status=404)
+
+    decoded = file.read().decode("utf-8-sig").splitlines()
+    reader = csv.DictReader(decoded)
+
+    updated = 0
+    errors = []
+
+    for row in reader:
+        student_id = row.get("student_id")
+
+        if not student_id:
+            errors.append("Missing student_id")
+            continue
+
+        try:
+            student = Student.objects.get(
+                student_id=student_id,
+                batch__batch_id=batch_id
+            )
+
+            # create enrollment ONLY for this elective
+            enrollment, _ = Enrollment.objects.get_or_create(
+                student=student,
+                subject=subject,
+                semester=semester,
+                batch=student.batch
+            )
+
+            #CREATE MARKS ALSO
+            Marks.objects.get_or_create(enrollment=enrollment)
+
+            updated += 1
+
+        except Student.DoesNotExist:
+            errors.append(f"{student_id} not found")
+
+        except Exception as e:
+            errors.append(f"{student_id}: {str(e)}")
+
+    # ACTIVITY LOG
+    if updated > 0:
+        batch = Batch.objects.filter(batch_id=batch_id).first()
+        user_label = get_user_label(request.user)
+
+        ActivityLog.objects.create(
+            action_type="ELECTIVE_ASSIGN", 
+            description=f"{updated} students assigned to elective {subject.code} - {subject.name} ({semester}) by {user_label}",
+            batch=batch,
+            subject=subject,
+            level=batch.current_level if batch else "",
+            semester=semester,
+            created_by=request.user
+        )
+    return Response({
+        "message": f"{updated} students assigned successfully",
+        "updated": updated,
+        "error_count": len(errors),
+        "errors": errors[:5]  # show only first 5
+    })

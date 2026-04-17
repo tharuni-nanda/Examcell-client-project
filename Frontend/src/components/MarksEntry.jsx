@@ -317,15 +317,30 @@ export default function MarksEntry() {
       });
 
       //alert("Bulk upload successful");
-      alert(`Updated: ${res.data.updated}\n Errors: ${res.data.errors.length}`);
-      console.table(res.data.errors);
+      alert(
+        `${res.data.message}\n\n` +
+        `Processed: ${res.data.summary.total_processed}\n` +
+        `Updated: ${res.data.summary.updated}\n` +
+        `Failed: ${res.data.summary.failed}`
+      );
+      if (res.data.summary.failed > 0) {
+        console.log("Errors:", res.data.errors);
+      }
       fetchMarks(selectedSubject); // refresh table
 
     } catch (err) {
-      console.error(err);
-      alert(err.response?.data?.error || "Bulk upload failed");
-      console.log(err.response?.data);
-    }
+        console.error(err);
+
+        alert(
+          err.response?.data?.message ||
+          err.response?.data?.error ||
+          "Bulk upload failed"
+        );
+
+        if (err.response?.data?.errors) {
+          console.log("Bulk Upload Errors:", err.response.data.errors);
+        }
+      }
   };
  //------------ load subjects button-----------------
   const loadSubjects = async () => {
@@ -741,68 +756,69 @@ export default function MarksEntry() {
                                   batchStatus === "Completed" ||
                                   (userRole === "faculty" && s.level !== level)
                                 }
-                                value={s[field] === null ? "AB" : s[field] ?? ""}
+                                value={s[`${field}_absent`]  ? "AB"  : s[field] ?? ""}
                                 onChange={(e) => {
                                   let value = e.target.value;
 
-                                  if (value === "A" || value === "a") {
-                                    setStudents(prev =>
-                                      prev.map(st =>
-                                        st.marks_id === s.marks_id
-                                          ? { ...st, [field]: "A" }
-                                          : st
-                                      )
-                                    );
-                                    return;
+                                  // allow typing freely for A, AB, numbers, empty
+                                  if (value === "") {
+                                    // empty
                                   }
-
-                                  if (value.toUpperCase() === "AB") {
+                                  else if (value.toUpperCase() === "AB") {
                                     value = "AB";
-                                  }
-                                  else if (value === "") {
-                                    value = "";
                                   }
                                   else if (/^\d+$/.test(value)) {
                                     value = Number(value);
                                   }
+                                  else if (value.toUpperCase() === "A") {
+                                    // allow typing A temporarily
+                                    value = "A";
+                                  }
                                   else {
-                                    return;
+                                    return; // block invalid characters
                                   }
 
-                                  const newVal = value === "AB" ? null : value;
+                                  const isAbsent = value === "AB";
+                                  const newVal = isAbsent ? null : value;
                                   const current = s[field] ?? null;
 
-                                  //prevent unnecessary API call
-                                  if (current === newVal) return;
+                                  if (current === newVal && s[`${field}_absent`] === isAbsent) return;
 
                                   setStudents(prev =>
                                     prev.map(st =>
                                       st.marks_id === s.marks_id
-                                        ? { ...st, [field]: newVal }
+                                        ? {
+                                            ...st,
+                                            [field]: newVal,
+                                            [`${field}_absent`]: isAbsent
+                                          }
                                         : st
                                     )
                                   );
 
-                                  api.post("/marks/save/", {
-                                    marks_id: s.marks_id,
-                                    [field]: value === "AB" ? "AB" : value
-                                  })
-                                  .then(() => {
-                                    const now = new Date().toISOString();
+                                  //ONLY CALL API WHEN COMPLETE VALUE (NOT "A")
+                                  if (value !== "A") {
+                                    api.post("/marks/save/", {
+                                      marks_id: s.marks_id,
+                                      [field]: isAbsent ? "AB" : value
+                                    })
+                                    .then(() => {
+                                      const now = new Date().toISOString();
 
-                                    setStudents(prev =>
-                                      prev.map(st =>
-                                        st.marks_id === s.marks_id
-                                          ? { ...st, updated_at: now }
-                                          : st
-                                      )
-                                    );
-                                  })
-                                  .catch(err => {
-                                    if (err.response?.status === 403) {
-                                      alert("This batch is locked (Completed).");
-                                    }
-                                  });
+                                      setStudents(prev =>
+                                        prev.map(st =>
+                                          st.marks_id === s.marks_id
+                                            ? { ...st, updated_at: now }
+                                            : st
+                                        )
+                                      );
+                                    })
+                                    .catch(err => {
+                                      if (err.response?.status === 403) {
+                                        alert("This batch is locked (Completed).");
+                                      }
+                                    });
+                                  }
                                 }}
                                 className="w-16 border rounded px-2 py-1 text-center"
                               />

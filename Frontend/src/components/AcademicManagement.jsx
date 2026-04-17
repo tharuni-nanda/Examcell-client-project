@@ -35,6 +35,9 @@ export default function AcademicManagement() {
   const [editModal, setEditModal] = useState(false);
   const [editingSubject, setEditingSubject] = useState(null);
 
+ //---------------------for elective students list uplode---------------
+  const [selectedFile, setSelectedFile] = useState(null);
+  const [uploadingSubject, setUploadingSubject] = useState(null);
 
   // ---------------- FETCH SUBJECTS ----------------
   const fetchSubjects = async () => {
@@ -139,6 +142,36 @@ export default function AcademicManagement() {
     alert("Delete failed");
   }
 };
+//-------------uplode api for students list for elective subject------------
+  const handleElectiveUpload = async () => {
+    if (!selectedFile) {
+      alert("Please select a CSV file");
+      return;
+    }
+
+    if (!uploadingSubject) {
+      alert("No subject selected");
+      return;
+    }
+
+    try {
+      const formData = new FormData();
+      formData.append("file", selectedFile);
+      formData.append("subject", uploadingSubject.code);
+      formData.append("batch", batch);
+      formData.append("semester", semester);
+
+      const res = await api.post("/electives/upload/", formData);
+
+      alert(res.data.message);
+
+      setUploadingSubject(null);
+      setSelectedFile(null);
+      fetchSubjects();
+    } catch (err) {
+      alert(err.response?.data?.error || "Upload failed");
+    }
+  };
 //------------- fetch batches from the db for the batch filter ---------------
 const fetchBatches = async () => {
   try {
@@ -298,17 +331,26 @@ const fetchBatches = async () => {
                             setEditingSubject(sub);
                             setEditModal(true);
                             }}
-                            className="text-blue-600 hover:underline"
+                             className="bg-blue-100 text-blue-700 px-2 py-1 rounded hover:bg-blue-200"
                         >
                             Edit
                         </button>
 
                         <button
                             onClick={() => handleDeleteSubject(sub.id)}
-                            className="text-red-600 hover:underline"
+                            className="bg-red-100 text-red-700 px-2 py-1 rounded hover:bg-red-200"
                         >
                             Delete
                         </button>
+                        {/* selected elective subject students uplode */}
+                        {sub.subject_type === "ELECTIVE" && (
+                          <button
+                            onClick={() => setUploadingSubject(sub)}
+                            className="bg-green-100 text-green-700 px-2 py-1 rounded hover:bg-green-200"
+                          >
+                            Upload Students
+                          </button>
+                        )}
                     </td>
 
 
@@ -405,24 +447,6 @@ const fetchBatches = async () => {
                             <option value="ZERO_CREDIT">Zero Credit (Only EST 100)</option>
                         </select>
                         )}
-
-                    {/*<select
-                        value={newSubject.exam_scheme}
-                        onChange={(e) =>
-                            setNewSubject({
-                            ...newSubject,
-                            exam_scheme: e.target.value,
-                            })
-                        }
-                        className="w-full border px-3 py-2 rounded mb-3"
-                        >
-                        <option value="MID20">Mid 20 (Best of 2)</option>
-                        <option value="MID15_AT4">Mid 15 + AT</option>
-                        <option value="MID40">Mid 40 (Best of 2 Avg)</option>
-                        <option value="ZERO_CREDIT">Zero Credit (Only EST 100)</option>
-                    </select>*/}
-
-
 
                 <div className="flex justify-end gap-3">
                   <button
@@ -538,6 +562,42 @@ const fetchBatches = async () => {
                 </div>
             </div>
         )}
+          {/* uplode model for elective sub selected students */}
+          {uploadingSubject && (
+            <div className="fixed inset-0 bg-black bg-opacity-40 flex items-center justify-center z-50">
+              <div className="bg-white p-6 rounded-lg w-96 shadow-lg">
+                <h2 className="text-lg font-bold mb-4">
+                  Upload Students for {uploadingSubject.name}
+                </h2>
+
+                <input
+                  type="file"
+                  accept=".csv"
+                  onChange={(e) => setSelectedFile(e.target.files[0])}
+                  className="mb-4"
+                />
+
+                <div className="flex justify-end gap-3">
+                  <button
+                    onClick={() => {
+                      setUploadingSubject(null);
+                      setSelectedFile(null);
+                    }}
+                    className="px-4 py-2 border rounded"
+                  >
+                    Cancel
+                  </button>
+
+                  <button
+                    onClick={handleElectiveUpload}
+                    className="px-4 py-2 bg-blue-600 text-white rounded"
+                  >
+                    Upload
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
 
         </div>
       </main>
