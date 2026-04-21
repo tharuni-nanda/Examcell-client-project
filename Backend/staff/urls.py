@@ -55,5 +55,8 @@ urlpatterns = [
     path("activate-exam/", activate_exam),
     path("deactivate-exam/", deactivate_exam),
     path("active-exam/<str:batch_id>/", get_active_exam),
-    path("promote-semester/", views.promote_semester)
+    path("promote-semester/", views.promote_semester),
+    #student search paths
+    path("student-results/", views.student_results_search),
+    path("export-student-result-pdf/", views.export_student_result_pdf),
 ]

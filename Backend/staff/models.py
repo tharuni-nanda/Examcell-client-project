@@ -341,8 +341,8 @@ class ActivityLog(models.Model):
     batch = models.ForeignKey(Batch, null=True, blank=True, on_delete=models.SET_NULL)
     subject = models.ForeignKey(Subject, null=True, blank=True, on_delete=models.SET_NULL)
 
-    level = models.CharField(max_length=20, null=True, blank=True)
-    semester = models.CharField(max_length=10, null=True, blank=True)
+    level = models.CharField(max_length=100, null=True, blank=True)
+    semester = models.CharField(max_length=100, null=True, blank=True)
     branch = models.CharField(max_length=20, null=True, blank=True)
     section = models.CharField(max_length=5, null=True, blank=True)
 

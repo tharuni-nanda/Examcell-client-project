@@ -11,6 +11,7 @@ import AcademicManagement from "./components/AcademicManagement";
 import Reports from "./components/Reports";
 import TestAPI from "./TestAPI";
 import ProtectedRoute from "./components/ProtectedRoute";
+import CertificatePage from "./components/CertificatePage";
 function App() {
   return (
     <>
@@ -53,6 +54,14 @@ function App() {
               <h1>React + Django Connection Test</h1>
               <TestAPI />
             </div>
+          }
+        />
+        <Route
+          path="/certificate-management"
+          element={
+            <ProtectedRoute allowedRoles={["coe","faculty"]}>
+              <CertificatePage />
+            </ProtectedRoute>
           }
         />
       </Routes>

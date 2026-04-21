@@ -1,86 +1,64 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { Link } from "react-router-dom";
 import Sidebar from "../components/Sidebar";
-
+import { api } from "../api"; 
 import {
-  FileText,
-  Edit,
   Search,
-  BarChart2,
-  Folder,
-  Bell,
-  LogOut,
-  ChevronLeft,
-  ChevronRight,
   User,
-  GraduationCap,
-  Layers,
-  Settings,
+  GraduationCap
 } from "lucide-react";
+//import {FileText,  Edit,  Search,  BarChart2,  Folder,  Bell,  LogOut,  ChevronLeft, ChevronRight,  User,  GraduationCap,  Layers, Settings,} from "lucide-react";
 
 const StudentSearch = () => {
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [notifOpen, setNotifOpen] = useState(false);
   const [profileMenu, setProfileMenu] = useState(false);
-
+  const [batch, setBatch] = useState("");
   const [studentId, setStudentId] = useState("");
-  const [batch, setBatch] = useState("All Batches");
-  const [section, setSection] = useState("All Sections");
-  const [branch, setBranch] = useState("All Branches");
+  const [batches, setBatches] = useState([]);
+  const [levels, setLevels] = useState(["PUC1", "PUC2", "E1", "E2", "E3", "E4"]);
+  const [semesters, setSemesters] = useState(["Sem1", "Sem2"]);
+  const [results, setResults] = useState([]);
 
-  const batches = [
-    "All Batches",
-    "R25",
-    "R24",
-    "R23",
-    "R22",
-    "R21",
-    "R20",
-    "R19",
-    "R18",
-    "R17",
-    "R16",
-    "R15",
-    "R14",
-    "R13",
-    "R12",
-    "R11",
-  ];
 
-  const sections = [
-    "All Sections",
-    "PUC1",
-    "PUC2",
-    "Engg1",
-    "Engg2",
-    "Engg3",
-    "Engg4",
-  ];
+  const levelOptions = ["PUC1", "PUC2", "E1", "E2", "E3", "E4"];
+  const semOptions = ["Sem1", "Sem2"];
+  
+  
+  const handleSearch = async () => {
+    if (!batch) {
+      alert("Batch is required");
+      return;
+    }
 
-  const branches = [
-    "All Branches",
-    "MPC",
-    "BiPC",
-    "CEC",
-    "CSE",
-    "ECE",
-    "ME",
-    "CE",
-    "MME",
-    "Chemical",
-    "AI",
-  ];
+    // fallback if user unselects all
+    const finalLevels = levels.length > 0 ? levels : levelOptions;
+    const finalSemesters = semesters.length > 0 ? semesters : semOptions;
 
-  const handleSearch = () => {
-    console.log("Search Parameters:");
-    console.log("Student ID/Name:", studentId);
-    console.log("Batch:", batch);
-    console.log("Section:", section);
-    console.log("Branch:", branch);
-    alert(
-      `Searching for: ${studentId || "All Students"}\nBatch: ${batch}\nSection: ${section}\nBranch: ${branch}`
-    );
+    try {
+      const res = await api.get("/student-results/", {
+        params: {
+          query: studentId,   //matches backend
+          batch: batch,
+          levels: levels,     // array
+          semesters: semesters
+        }
+      });
+
+      setResults(res.data.students);
+    } catch (err) {
+      console.error(err);
+    }
   };
+  //useEffect(() => {
+  //  setLevels(levelOptions);
+  //  setSemesters(semOptions);
+  //}, [levelOptions, semOptions]);
+  useEffect(() => {
+    api.get("/batches/")
+      .then(res => setBatches(res.data))
+      .catch(err => console.error(err));
+  }, []);
 
   return (
     <div className="min-h-screen bg-gray-50 text-gray-800 font-sans">
@@ -101,48 +79,8 @@ const StudentSearch = () => {
                 Search and filter students by ID, batch, section, or branch.
               </p>
             </div>
-
-            <div className="flex items-center gap-6">
-              <div className="text-sm text-gray-500">{new Date().toLocaleDateString()}</div>
-
-              <div className="relative">
-                <button
-                  onClick={() => setNotifOpen(!notifOpen)}
-                  className="p-2 rounded hover:bg-gray-100 text-gray-600"
-                >
-                  <Bell size={20} />
-                </button>
-                {notifOpen && (
-                  <div className="absolute right-0 mt-2 w-64 bg-white border shadow-lg rounded-lg p-4 text-sm z-40">
-                    <p className="text-gray-600">No new notifications</p>
-                  </div>
-                )}
-              </div>
-
-              <div className="relative">
-                <button
-                  onClick={() => setProfileMenu(!profileMenu)}
-                  className="h-10 w-10 rounded-full bg-gray-200 flex items-center justify-center hover:bg-gray-300"
-                >
-                  <User size={20} className="text-gray-600" />
-                </button>
-                {profileMenu && (
-                  <div className="absolute right-0 mt-2 w-40 bg-white border rounded-lg shadow-lg py-2 text-sm z-50">
-                    <Link to="/coe-dashboard" className="block px-4 py-2 hover:bg-gray-100">
-                      Dashboard
-                    </Link>
-                    <Link to="/profile" className="block px-4 py-2 hover:bg-gray-100">
-                      Profile
-                    </Link>
-                    <Link
-                      to="/logout"
-                      className="block px-4 py-2 text-red-600 hover:bg-gray-100"
-                    >
-                      Logout
-                    </Link>
-                  </div>
-                )}
-              </div>
+            <div className="text-sm text-gray-500">
+              {new Date().toLocaleDateString()}
             </div>
           </div>
 
@@ -176,71 +114,192 @@ const StudentSearch = () => {
 
             {/* Dropdown Filters */}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-              {/* Batch */}
-              <div>
-                <label className="flex items-center text-gray-700 font-medium mb-2">
-                  <Layers size={18} className="text-red-700 mr-2" /> Batch (Optional)
-                </label>
-                <select
-                  value={batch}
-                  onChange={(e) => setBatch(e.target.value)}
-                  className="w-full border border-gray-300 rounded-lg px-4 py-2.5 focus:ring-2 focus:ring-red-600 focus:outline-none"
-                >
-                  {batches.map((b) => (
-                    <option key={b} value={b}>
-                      {b}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              {/* Section */}
-              <div>
-                <label className="flex items-center text-gray-700 font-medium mb-2">
-                  <Settings size={18} className="text-red-700 mr-2" /> Section (Optional)
-                </label>
-                <select
-                  value={section}
-                  onChange={(e) => setSection(e.target.value)}
-                  className="w-full border border-gray-300 rounded-lg px-4 py-2.5 focus:ring-2 focus:ring-red-600 focus:outline-none"
-                >
-                  {sections.map((s) => (
-                    <option key={s} value={s}>
-                      {s}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              {/* Branch */}
-              <div>
-                <label className="flex items-center text-gray-700 font-medium mb-2">
-                  <Settings size={18} className="text-red-700 mr-2" /> Branch (Optional)
-                </label>
-                <select
-                  value={branch}
-                  onChange={(e) => setBranch(e.target.value)}
-                  className="w-full border border-gray-300 rounded-lg px-4 py-2.5 focus:ring-2 focus:ring-red-600 focus:outline-none"
-                >
-                  {branches.map((br) => (
-                    <option key={br} value={br}>
-                      {br}
-                    </option>
-                  ))}
-                </select>
-              </div>
-            </div>
-
-            {/* Search Button */}
-            <div className="flex justify-end mt-8">
-              <button
-                onClick={handleSearch}
-                className="flex items-center bg-red-700 hover:bg-red-800 text-white px-6 py-2.5 rounded-lg transition-all shadow-md"
+              {/* Batches */}
+              <select
+                value={batch}
+                onChange={(e) => setBatch(e.target.value)}
               >
-                <Search size={18} className="mr-2" /> Search
-              </button>
+                <option value="">Select Batch</option>
+                {batches.map(b => (
+                  <option key={b.batch_id} value={b.batch_id}>
+                    {b.batch_id}
+                  </option>
+                ))}
+              </select>
+
+              {/* level or years */}
+              <div>
+                <label>Level *</label>
+                {levelOptions.map(l => (
+                  <label key={l}>
+                    <input
+                      type="checkbox"
+                      value={l}
+                      onChange={(e) => {
+                        if (e.target.checked) {
+                          setLevels(prev => [...prev, l]);
+                        } else {
+                          setLevels(prev => prev.filter(x => x !== l));
+                        }
+                      }}
+                    />
+                    {l}
+                  </label>
+                ))}
+              </div>
+
+              {/* semester*/}
+              <div>
+                <label>Semester *</label>
+                {semOptions.map(s => (
+                  <label key={s}>
+                    <input
+                      type="checkbox"
+                      value={s}
+                      onChange={(e) => {
+                        if (e.target.checked) {
+                          setSemesters(prev => [...prev, s]);
+                        } else {
+                          setSemesters(prev => prev.filter(x => x !== s));
+                        }
+                      }}
+                    />
+                    {s}
+                  </label>
+                ))}
+              </div>
+
+              {/* Search Button */}
+              <div className="flex justify-end mt-8">
+                <button
+                  onClick={handleSearch}
+                  className="flex items-center bg-red-700 hover:bg-red-800 text-white px-6 py-2.5 rounded-lg transition-all shadow-md"
+                >
+                  <Search size={18} className="mr-2" /> Search
+                </button>
+              </div>
+	      
             </div>
           </div>
+          {/* RESULTS SECTION */}
+              <div className="max-w-6xl mx-auto mt-8">
+                {results.map(student => (
+                  <div key={student.student_id} className="bg-white p-6 mb-6 rounded-xl shadow">
+
+                    {/* STUDENT HEADER */}
+                    <h2 className="text-xl font-bold">{student.name}</h2>
+                    <p>ID: {student.student_id}</p>
+                    <p>Branch: {student.branch}</p>
+                    <p className="font-semibold">CGPA: {student.cgpa}</p>
+                    <button
+                      onClick={async () => {
+                        try {
+                          // fallback if nothing selected
+                          const finalLevels = levels.length > 0 ? levels : levelOptions;
+                          const finalSemesters = semesters.length > 0 ? semesters : semOptions;
+
+                          // build params properly
+                          const params = new URLSearchParams();
+                          params.append("student_id", student.student_id);
+                          params.append("batch", batch);
+
+                          // send ALL selected filters
+                          finalLevels.forEach(l => params.append("levels", l));
+                          finalSemesters.forEach(s => params.append("semesters", s));
+
+                          const res = await api.get(
+                            `/export-student-result-pdf/?${params.toString()}`,
+                            { responseType: "blob" }
+                          );
+
+                          const url = window.URL.createObjectURL(new Blob([res.data]));
+                          const link = document.createElement("a");
+                          link.href = url;
+                          link.download = `${student.student_id}_result.pdf`;
+                          document.body.appendChild(link);
+                          link.click();
+                          link.remove();
+                        } catch (err) {
+                          alert("PDF download failed");
+                        }
+                      }}
+                      className="px-3 py-1 bg-red-500 text-white rounded text-sm"
+                    >
+                      Download PDF
+                    </button>
+                    {/* SEM RESULTS */}
+                    {Object.entries(student.results).map(([key, val]) => {
+                      const hasRemedial = val.subjects.some(sub => sub.grade === "R");
+
+                      const remedials = val.subjects.filter(sub => sub.grade === "R");
+                      const cleared = val.subjects.filter(sub => sub.grade !== "R");
+
+                      return (
+                        <div key={key} className="mt-4">
+                          <h3 className="font-semibold text-red-700">
+                            {key.replace("_", " - ")}
+                            <p className="text-sm font-medium">
+                              SGPA: {val.sgpa ?? "-"}
+                            </p>
+                          </h3>
+
+                          <table className="w-full mt-2 border">
+                            <thead>
+                              <tr className="bg-gray-100">
+                                <th>Code</th>
+                                <th>Subject</th>
+                                <th>Credits</th>
+                                <th>Grade</th>
+                                <th>Status</th>
+                              </tr>
+                            </thead>
+
+                            <tbody>
+                              {val.subjects.map((sub, i) => (
+                                <tr key={i}>
+                                  <td>{sub.code}</td>
+                                  <td>{sub.name}</td>
+                                  <td>{sub.credits}</td>
+                                  <td>{sub.grade}</td>
+                                  <td>
+                                    {sub.grade === "R" ? (
+                                      <span className="text-red-600">Failed</span>
+                                    ) : (
+                                      <span className="text-green-600">Cleared</span>
+                                    )}
+                                  </td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+
+                          {/* BACKLOG SECTION */}
+                          {remedials.length > 0 && (
+                            <div className="mt-3 bg-red-50 p-3 rounded">
+                              <h4 className="text-red-700 font-bold">Backlogs</h4>
+                              {remedials.map(sub => (
+                                <p key={sub.code}>{sub.name}</p>
+                              ))}
+                            </div>
+                          )}
+
+                          {/* CLEARED SECTION */}
+                          {cleared.length > 0 && (
+                            <div className="mt-3 bg-green-50 p-3 rounded">
+                              <h4 className="text-green-700 font-bold">Cleared</h4>
+                              {cleared.map(sub => (
+                                <p key={sub.code}>{sub.name}</p>
+                              ))}
+                            </div>
+                          )}
+
+                        </div>
+                      );
+                    })}
+                      
+                    </div>
+                ))}
+              </div>
         </main>
       </div>
     </div>

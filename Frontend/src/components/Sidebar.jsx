@@ -59,6 +59,7 @@ export default function Sidebar({ sidebarOpen, setSidebarOpen }) {
     { name: "Batch Management", path: "/batch-management", icon: <Folder size={18} /> },
     { name: "Academic Management", path: "/academic-management", icon: <BookOpen size={18} /> },
     { name: "Reports", path: "/reports", icon: <FileText size={18} /> },
+    { name: "Certificate Management", path: "/certificate-management", icon: <FileText size={18} /> },
   ];
 
   return (

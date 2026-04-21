@@ -36,10 +36,14 @@ from rest_framework.permissions import AllowAny
 from .models import ExamStatus, ActivityLog
 from .permissions import IsCOE
 from rest_framework_simplejwt.tokens import RefreshToken
-
-
+#student search imports
+from django.db.models import Q
+from .models import Result
 
 '''-----------------------------------------------------------'''
+import os
+from reportlab.lib import colors
+
 #------------- role names for coe and faculty for active log-------------------
 def get_user_label(user):
     if not user:
@@ -459,90 +463,7 @@ def faculty_login(request):
         return Response({'error': 'Invalid email'}, status=status.HTTP_404_NOT_FOUND)
 
 
-'''
-# ---------- BATCHES ----------
-@api_view(['GET'])
-def get_batches(request):
-    batches = Batch.objects.all().order_by('-year')
-    serializer = BatchSerializer(batches, many=True)
-    return Response(serializer.data)
 
-@api_view(['POST'])
-def add_batch(request):
-    serializer = BatchSerializer(data=request.data)
-    if serializer.is_valid():
-        serializer.save()
-        ActivityLog.objects.create(action="Batch Added", details=f"Added batch {serializer.data['name']}")
-        return Response(serializer.data, status=status.HTTP_201_CREATED)
-    return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-
-@api_view(['POST'])
-def promote_batch(request, batch_id):
-    try:
-        batch = Batch.objects.get(batch_id=batch_id)
-    except Batch.DoesNotExist:
-        return Response({"error": "Batch not found"}, status=404)
-    
-    next_section = request.data.get("next_section", "")
-    batch.section = next_section
-    batch.status = "Active"
-    batch.save()
-    ActivityLog.objects.create(action="Batch Promoted", details=f"Batch {batch.name} promoted to {next_section}")
-    return Response({"message": "Batch promoted successfully"}, status=200)
-
-# ---------- STUDENTS ----------
-@api_view(['POST'])
-def upload_students(request, batch_id):
-    file = request.FILES['file']
-    batch = Batch.objects.get(batch_id=batch_id)
-
-    decoded_file = file.read().decode('utf-8').splitlines()
-    reader = csv.DictReader(decoded_file)
-    for row in reader:
-        Student.objects.create(
-            roll_no=row['RollNo'],
-            name=row['Name'],
-            branch=row['Branch'],
-            semester=row['Semester'],
-            marks=row.get('Marks', 0),
-            batch=batch,
-            status="Entered"
-        )
-    batch.total_students = batch.students.count()
-    batch.save()
-    ActivityLog.objects.create(
-        action="Student Upload",
-        details=f"Uploaded {batch.students.count()} students to batch {batch.name}"
-    )
-    return Response({"message": "Students uploaded successfully"})
-
-
-# ---------- DASHBOARD STATS ----------
-@api_view(['GET'])
-def dashboard_stats(request):
-    total_students = Student.objects.count()
-    active_batches = Batch.objects.filter(status="Active").count()
-    completed_batches = Batch.objects.filter(status="Completed").count()
-    pending_marks = Student.objects.filter(status="Pending").count()
-    avg_marks = Student.objects.aggregate(avg=Avg('marks'))['avg'] or 0
-
-    stats = {
-        "total_students": total_students,
-        "active_batches": active_batches,
-        "completed_batches": completed_batches,
-        "pending_marks": pending_marks,
-        "completed_exams_percent": round((100 - (pending_marks / total_students * 100)) if total_students else 0, 2),
-        "average_marks": round(avg_marks, 2)
-    }
-    return Response(stats)
-
-# ---------- ACTIVITY LOG ----------
-@api_view(['GET'])
-def get_activity_log(request):
-    logs = ActivityLog.objects.all().order_by('-timestamp')[:20]
-    serializer = ActivityLogSerializer(logs, many=True)
-    return Response(serializer.data)
-'''
 
 #----------------------- MARKS ENTRY ------------------------------------------
 #internal = calculate_internal(marks)
@@ -882,7 +803,9 @@ def setup_semester(request):
     )
 
     created_count = 0
-
+    #restriction for duplicate initailizations if once enrollment done then can be add subjects that overright electives
+    '''if Enrollment.objects.filter(batch=batch, semester=semester).exists():
+        return Response({"error": "Already initialized"}, status=400)'''
     for subject in subjects:
 
         #  CRITICAL FIX — Branch Filtering
@@ -927,6 +850,7 @@ def save_marks(request):
 
     try:
         marks = Marks.objects.get(id=marks_id)
+        batch = marks.enrollment.batch
         # FACULTY EDIT RESTRICTION
         if request.user.role == "faculty":
             faculty = Faculty.objects.filter(user=request.user).first()
@@ -940,7 +864,12 @@ def save_marks(request):
             # Restrict branch (only for engineering)
             #if faculty.branch and marks.enrollment.student.branch != faculty.branch:
                 #return Response({"error": "You cannot edit this branch"}, status=403)
-
+            '''#restrictic semester wise
+            if marks.enrollment.semester != batch.current_semester:
+                return Response({"error": "Semester locked"}, status=403)
+            #restrctions year wise
+            if marks.enrollment.subject.level != batch.current_level:
+                return Response({"error": "Previous years are locked"}, status=403)'''
     except Marks.DoesNotExist:
         return Response({"error": "Marks not found"}, status=404)
 
@@ -1197,29 +1126,60 @@ def export_marks_pdf(request):
     elements = []
     styles = getSampleStyleSheet()
 
-    # ---------------- HEADER ----------------
-    elements.append(Paragraph("Exam Cell - Marks Report", styles["Title"]))
-    elements.append(Spacer(1, 0.3 * inch))
+    # ================= HEADER (LIKE RESULT PDF) =================
+    logo_path = os.path.join("static", "images", "Logonew.png")
 
-    elements.append(Paragraph(f"Batch: {batch_id or '-'}", styles["Normal"]))
-    elements.append(Paragraph(f"Level: {level or '-'}", styles["Normal"]))
-    elements.append(
-        Paragraph(
-            f"Semester: {semester or (qs.first().enrollment.semester if qs.exists() else '-')}",
-            styles["Normal"]
-        )
-    )
+    try:
+        logo = Image(logo_path, width=60, height=60)
+    except:
+        logo = ""
 
-    if subject_name:
-        elements.append(Paragraph(f"Subject: {subject_name} ({subject_code})", styles["Normal"]))
-    else:
-        elements.append(Paragraph(f"Subject Code: {subject_code or '-'}", styles["Normal"]))
+    header_table = Table([
+        [
+            logo,
+            Paragraph(
+                "<b>Rajiv Gandhi University of Knowledge Technologies - Andhra Pradesh</b><br/>"
+                "<b>RK Valley Campus</b><br/>"
+                "<font size=8>(Established by the Govt. of Andhra Pradesh and recognized as per Section 2(f), 12(B) of UGC Act, 1956)</font>",
+                styles["Normal"]
+            )
+        ]
+    ], colWidths=[70, 400])
 
-    elements.append(Paragraph(f"Exam Type: {exam_type}", styles["Normal"]))
-    elements.append(Paragraph(f"Section: {section or 'All'}", styles["Normal"]))
-    elements.append(Spacer(1, 0.3 * inch))
-    
+    header_table.setStyle(TableStyle([
+        ("VALIGN", (0,0), (-1,-1), "MIDDLE")
+    ]))
 
+    elements.append(header_table)
+    elements.append(Spacer(1, 10))
+
+    # Yellow line
+    elements.append(Table([[""]], colWidths=[500], style=[
+        ("LINEBELOW", (0,0), (-1,-1), 2, colors.gold)
+    ]))
+
+    elements.append(Spacer(1, 15))
+
+
+    # ================= GREEN FILTER BOX =================
+    info_data = [
+        ["Batch", batch_id or "-"],
+        ["Level", level or "-"],
+        ["Semester", semester or "-"],
+        ["Subject", f"{subject_name} ({subject_code})" if subject_name else subject_code or "-"],
+        ["Exam Type", exam_type],
+        ["Section", section or "All"]
+    ]
+
+    info_table = Table(info_data, colWidths=[120, 300])
+
+    info_table.setStyle(TableStyle([
+        ("GRID", (0,0), (-1,-1), 1, colors.green),
+        ("BACKGROUND", (0,0), (0,-1), colors.lightgrey)
+    ]))
+
+    elements.append(info_table)
+    elements.append(Spacer(1, 20))
     # ---------------- DETECT MODE ----------------
     #is_puc = batch and batch.current_level.startswith("PUC")
     is_puc = False
@@ -1435,7 +1395,12 @@ def export_marks_pdf(request):
         data.append(row)
 
     # ---------------- TABLE ----------------
-    table = Table(data, repeatRows=1)
+    num_cols = len(data[0])
+    page_width = 520  # usable width for A4
+
+    col_widths = [page_width / num_cols] * num_cols
+
+    table = Table(data, repeatRows=1, colWidths=col_widths)
 
     table.setStyle(TableStyle([
         ("BACKGROUND", (0, 0), (-1, 0), colors.lightgrey),
@@ -1445,7 +1410,8 @@ def export_marks_pdf(request):
     ]))
 
     elements.append(table)
-    doc.build(elements)
+    #doc.build(elements)
+    doc.build(elements, onFirstPage=draw_watermark, onLaterPages=draw_watermark)
     ActivityLog.objects.create(
         action_type="PDF_EXPORT",
         description=f"{level} {semester} {subject_code} exported as PDF",
@@ -1498,6 +1464,14 @@ def create_subject(request):
         data["exam_scheme"] = None
 
     serializer = SubjectSerializer(data=data)
+    #restriction for before and after promoting semester and batch
+    batch = Batch.objects.get(batch_id=data.get("regulation"))
+
+    if batch.current_semester != data.get("semester"):
+        return Response({"error": "Cannot create subject for inactive semester"}, status=400)
+
+    if batch.current_level != data.get("level"):
+        return Response({"error": "Invalid level for this batch"}, status=400)
 
     if serializer.is_valid():
         serializer.save()
@@ -1928,3 +1902,361 @@ def upload_elective_students(request):
         "error_count": len(errors),
         "errors": errors[:5]  # show only first 5
     })
+
+#---------------------------Student Search-------------------------------
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def student_results_search(request):
+    student_query = request.GET.get("query")  # id or name
+    batch_id = request.GET.get("batch")
+    levels = request.GET.getlist("levels")
+    semesters = request.GET.getlist("semesters")
+
+    if not batch_id:
+        return Response({"error": "Batch is required"}, status=400)
+
+    students = Student.objects.filter(batch__batch_id=batch_id)
+
+    if student_query:
+        students = students.filter(
+            Q(student_id__icontains=student_query) |
+            Q(name__icontains=student_query)
+        )
+
+    results = []
+
+    for student in students:
+        enrollments = Enrollment.objects.filter(student=student)
+
+        if levels:
+            enrollments = enrollments.filter(subject__level__in=levels)
+
+        if semesters:
+            enrollments = enrollments.filter(semester__in=semesters)
+
+        sem_data = {}
+
+        for enr in enrollments:
+            marks = Marks.objects.filter(enrollment=enr).first()
+            subject = enr.subject
+
+            if not marks:
+                continue
+
+            # ---- TOTAL + GRADE ----
+            if subject.subject_type == "THEORY":
+                internal = calculate_internal(marks)
+                total = internal + (marks.est or 0)
+
+                if marks.est_absent or marks.est is None or marks.est < 18:
+                    grade = "R"
+                else:
+                    grade = marks_to_grade(total, subject.credits)
+
+            elif subject.subject_type in ["LAB", "PROJECT", "ELECTIVE"]:
+                total = (marks.internal or 0) + (marks.external or 0)
+
+                if marks.external_absent or marks.external is None or marks.external < 18:
+                    grade = "R"
+                else:
+                    grade = marks_to_grade(total, subject.credits)
+
+            else:
+                total = marks.external or 0
+                grade = marks_to_grade(total, subject.credits)
+
+            key = f"{subject.level}_{enr.semester}"
+
+            if key not in sem_data:
+                sem_data[key] = {
+                    "subjects": [],
+                    "sgpa": 0
+                }
+
+            sem_data[key]["subjects"].append({
+                "code": subject.code,
+                "name": subject.name,
+                "credits": subject.credits,
+                "grade": grade
+            })
+        # CALCULATE SGPA PER SEM
+        for key, val in sem_data.items():
+            total_points = 0
+            total_credits = 0
+
+            for sub in val["subjects"]:
+                gp = GRADE_MAP.get(sub["grade"], 0)
+                credits = sub["credits"]
+
+                total_points += gp * credits
+                total_credits += credits
+
+            val["sgpa"] = round(total_points / total_credits, 2) if total_credits else 0
+        #cgpa calc from db
+        '''results_qs = Result.objects.filter(student=student)
+        if results_qs.exists():
+            cgpa = round(
+                sum(r.sgpa for r in results_qs) / results_qs.count(),
+                2
+            )
+        else:
+            cgpa = 0'''
+        #calc cgpa by live
+        all_sgpas = []
+
+        for key, val in sem_data.items():
+            if val["sgpa"]:
+                all_sgpas.append(val["sgpa"])
+
+        cgpa = round(sum(all_sgpas) / len(all_sgpas), 2) if all_sgpas else 0
+        results.append({
+            "student_id": student.student_id,
+            "name": student.name,
+            "branch": student.branch,
+            "results": sem_data,
+            "cgpa": cgpa
+        })
+    
+    
+    return Response({"students": results})
+#======================water mark================================
+def draw_watermark(canvas, doc):
+    watermark_path = os.path.join("static", "images", "rgukt_watermark.jpg")
+
+    try:
+        canvas.saveState()
+        canvas.setFillAlpha(0.08)  # light watermark
+
+        canvas.drawImage(
+            watermark_path,
+            100, 250,
+            width=300,
+            height=300,
+            preserveAspectRatio=True,
+            mask='auto'
+        )
+
+        canvas.restoreState()
+    except:
+        pass
+
+from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer, Image, PageBreak
+from reportlab.lib import colors
+from reportlab.lib.styles import getSampleStyleSheet
+from django.http import HttpResponse
+import os
+
+@api_view(["GET"])
+def export_student_result_pdf(request):
+    student_id = request.GET.get("student_id")
+    batch_id = request.GET.get("batch")
+    levels = request.GET.getlist("levels")
+    semesters = request.GET.getlist("semesters")
+
+    student = Student.objects.filter(
+        student_id=student_id,
+        batch__batch_id=batch_id
+    ).first()
+
+    if not student:
+        return Response({"error": "Student not found"}, status=404)
+
+    enrollments = Enrollment.objects.filter(student=student).select_related("subject")
+
+    if levels:
+        enrollments = enrollments.filter(subject__level__in=levels)
+
+    if semesters:
+        enrollments = enrollments.filter(semester__in=semesters)
+
+    response = HttpResponse(content_type="application/pdf")
+    response["Content-Disposition"] = f'attachment; filename="{student_id}_result.pdf"'
+
+    doc = SimpleDocTemplate(response)
+    styles = getSampleStyleSheet()
+    elements = []
+
+    # ================= HEADER (LIKE NAVBAR) =================
+    logo_path = os.path.join("static", "images","Logonew.png")  # adjust path
+
+    try:
+        logo = Image(logo_path, width=60, height=60)
+    except:
+        logo = ""
+
+    header_table = Table([
+        [
+            logo,
+            Paragraph(
+                "<b>Rajiv Gandhi University of Knowledge Technologies - Andhra Pradesh</b><br/>"
+                "<b>RK Valley Campus</b><br/>"
+                "<font size=8>(Established by the Govt. of Andhra Pradesh and recognized as per Section 2(f), 12(B) of UGC Act, 1956)</font>",
+                styles["Normal"]
+            )
+        ]
+    ], colWidths=[70, 400])
+
+    header_table.setStyle(TableStyle([
+        ("VALIGN", (0,0), (-1,-1), "MIDDLE")
+    ]))
+    # ================= STUDENT INFO BOX =================
+    info_data = [
+        ["Name", student.name],
+        ["ID", student.student_id],
+    ]
+
+    if student.branch:
+        info_data.append(["Branch", student.branch])
+    else:
+        info_data.append(["Course", "PUC"])
+
+    info_table = Table(info_data, colWidths=[120, 300])
+
+    info_table.setStyle(TableStyle([
+        ("GRID", (0,0), (-1,-1), 1, colors.green),
+        ("BACKGROUND", (0,0), (0,-1), colors.lightgrey),
+    ]))
+
+    # ================= SEMESTER DATA =================
+    sem_map = {}
+
+    for enr in enrollments:
+        key = f"{enr.subject.level} {enr.semester}"
+
+        if key not in sem_map:
+            sem_map[key] = []
+
+        marks = Marks.objects.filter(enrollment=enr).first()
+        if not marks:
+            continue
+
+        subject = enr.subject
+
+        # ---- MARKS ----
+        if subject.subject_type == "THEORY":
+            internal = calculate_internal(marks)
+            external = marks.est or 0
+
+            if marks.est_absent or marks.est is None or marks.est < 18:
+                grade = "R"
+            else:
+                grade = marks_to_grade(internal + external, subject.credits)
+
+        else:
+            internal = marks.internal or 0
+            external = marks.external or 0
+
+            if marks.external_absent or marks.external is None or marks.external < 18:
+                grade = "R"
+            else:
+                grade = marks_to_grade(internal + external, subject.credits)
+
+        total = internal + external
+
+        sem_map[key].append([
+            subject.code,
+            subject.name,
+            subject.credits,
+            round(total, 2),
+            grade
+        ])
+
+    # ================= BUILD EACH SEM =================
+    for i, (sem, rows) in enumerate(sem_map.items()):
+
+        # ===== HEADER EVERY PAGE =====
+        elements.append(header_table)
+        elements.append(Spacer(1, 10))
+
+        elements.append(Table([[""]], colWidths=[500], style=[
+            ("LINEBELOW", (0,0), (-1,-1), 2, colors.gold)
+        ]))
+
+        elements.append(Spacer(1, 15))
+
+        # ===== GREEN STUDENT BOX EVERY PAGE =====
+        elements.append(info_table)
+        elements.append(Spacer(1, 20))
+        elements.append(Paragraph(f"<b>{sem}</b>", styles["Heading2"]))
+        elements.append(Spacer(1, 10))
+
+        # Calculate SGPA
+        total_points = 0
+        total_credits = 0
+
+        for r in rows:
+            grade = r[4]
+            credits = r[2]
+            gp = GRADE_MAP.get(grade, 0)
+
+            total_points += gp * credits
+            total_credits += credits
+
+        sgpa = round(total_points / total_credits, 2) if total_credits else 0
+
+        # Table
+        table_data = [[
+            "Course Code",
+            "Course Title",
+            "Credits",
+            "Total",
+            "Grade"
+        ]] + rows
+
+        # Add Total Row
+        total_marks = sum(r[3] for r in rows)
+
+        table_data.append(["", "Total", total_credits, total_marks, ""])
+        table_data.append(["", "SGPA", "", "", str(sgpa)])
+        
+        num_cols = len(table_data[0])
+        page_width = 520
+
+        col_widths = [
+            80,   # Course Code
+            220,  # Course Title (BIG SPACE )
+            70,   # Credits
+            80,   # Total
+            60    # Grade
+        ]
+
+        table = Table(table_data, colWidths=col_widths)
+
+        table.setStyle(TableStyle([
+            ("LINEBELOW", (0,0), (-1,0), 1.5, colors.black),  # header line
+            ("LINEABOVE", (0,-2), (-1,-2), 1, colors.black),  # before total
+            ("LINEABOVE", (0,-1), (-1,-1), 1, colors.black),  # before sgpa
+            ("BACKGROUND", (0,0), (-1,0), colors.lightgrey),
+            ("SPAN", (0,-2), (1,-2)),  # Total row span
+            ("SPAN", (0,-1), (1,-1)),  # SGPA row span
+            ("ALIGN", (-1,-1), (-1,-1), "CENTER"),
+            ("BACKGROUND", (0,-2), (-1,-1), colors.lightgrey),
+            ("FONTNAME", (0,-2), (-1,-1), "Helvetica-Bold"),
+        ]))
+
+        elements.append(table)
+        elements.append(Spacer(1, 30))
+
+        # Page break after each sem
+        if i < len(sem_map) - 1:
+            elements.append(PageBreak())
+
+    #doc.build(elements)
+    doc.build(elements, onFirstPage=draw_watermark, onLaterPages=draw_watermark)
+    unique_levels = list(dict.fromkeys(levels))
+    unique_semesters = list(dict.fromkeys(semesters))
+
+    ActivityLog.objects.create(
+        action_type="PDF_EXPORT",
+        description=(
+            f"Result PDF | {student_id} | "
+            f"Levels: {', '.join(unique_levels) if unique_levels else 'ALL'} | "
+            f"Sem: {', '.join(unique_semesters) if unique_semesters else 'ALL'}"
+        ),
+        batch=student.batch,
+        level=",".join(unique_levels) if unique_levels else "ALL",
+        semester=",".join(unique_semesters) if unique_semesters else "ALL",
+        subject=None,
+        created_by=request.user
+    )
+    return response
