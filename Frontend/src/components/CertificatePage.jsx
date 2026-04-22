@@ -212,89 +212,87 @@ export default function CertificatePage() {
                   Download
                 </button>
               </div>
-
               <div
                 ref={certificateRef}
-                className="relative border-[12px] border-double border-[#991b1b] p-12 bg-white"
-              >
+                className="relative w-[800px] h-[1100px] mx-auto bg-white"
+                >
 
-                {/* CERTIFICATE NUMBER */}
-                <p className="absolute top-6 right-10 text-sm">
-                  Cert No: RGUKT/{new Date().getFullYear()}/{student.id}
+                {/* TEMPLATE BACKGROUND */}
+                <img
+                    src={
+                    certType === "CMM"
+                        ? "/templates/cmm.jpg"
+                        : certType === "OD"
+                        ? "/templates/od.jpg"
+                        : "/templates/pc.jpg"
+                    }
+                    alt="template"
+                    className="absolute top-0 left-0 w-full h-full object-cover"
+                />
+
+                {/* ===== DYNAMIC DATA OVERLAY ===== */}
+
+                {/* NAME */}
+                <p className="absolute top-[250px] left-[180px] text-[18px] font-semibold">
+                    {student.name}
                 </p>
 
-                {/* WATERMARK */}
-                <div className="absolute inset-0 flex items-center justify-center opacity-10 text-7xl font-bold">
-                  RGUKT
-                </div>
-
-                {/* LOGO */}
-                <div className="flex justify-center mb-4">
-                  <img src="/logo.png" alt="logo" className="h-16" />
-                </div>
-
-                {/* HEADER */}
-                <h1 className="text-center font-bold text-xl text-[#991b1b]">
-                  Rajiv Gandhi University of Knowledge Technologies
-                </h1>
-
-                <p className="text-center mb-6">(RGUKT)</p>
-
-                {/* TITLE */}
-                <h2 className="text-center font-semibold mb-6">
-                  {certType === "CMM"
-                    ? "CONSOLIDATED MARKS MEMO"
-                    : certType === "OD"
-                    ? "ORIGINAL DEGREE"
-                    : "PROVISIONAL CERTIFICATE"}
-                </h2>
-
-                {/* BODY */}
-                <p className="text-center">This is to certify that</p>
-
-                <h2 className="text-center text-2xl font-bold text-[#991b1b]">
-                  {student.name}
-                </h2>
-
-                <p className="text-center mt-2">
-                  has successfully completed the course in{" "}
-                  <b>{student.branch}</b>.
+                {/* ID */}
+                <p className="absolute top-[280px] left-[500px] text-[16px]">
+                    {student.id}
                 </p>
 
-                <p className="text-center mt-4">
-                  During the academic period 2022 - 2026
+                {/* BRANCH */}
+                <p className="absolute top-[310px] left-[180px] text-[16px]">
+                    {student.branch}
                 </p>
+                {/* ================= TABLE FOR CMM ================= */}
+                {certType === "CMM" && (
+                <table className="absolute top-[430px] left-[90px] w-[620px] text-[11px]">
 
-                {/* PHOTO */}
-                {certType === "PC" && image && (
-                  <img
-                    src={image}
-                    alt="student"
-                    className="absolute right-10 top-32 w-24 h-28 border"
-                  />
+                    <thead>
+                    <tr className="text-left font-semibold">
+                        <th className="py-1">Code</th>
+                        <th className="py-1">Subject Title</th>
+                        <th className="py-1 text-center">Cr.</th>
+                        <th className="py-1 text-center">Gr.</th>
+                    </tr>
+                    </thead>
+
+                    <tbody>
+                    <tr>
+                        <td>MA1101</td>
+                        <td>Engineering Mathematics-I</td>
+                        <td className="text-center">4</td>
+                        <td className="text-center">Ex</td>
+                    </tr>
+
+                    <tr>
+                        <td>PH1101</td>
+                        <td>Engineering Physics</td>
+                        <td className="text-center">3</td>
+                        <td className="text-center">A</td>
+                    </tr>
+                    </tbody>
+
+                </table>
                 )}
 
                 {/* DATE */}
-                <p className="mt-10 text-sm">
-                  Date: {new Date().toLocaleDateString()}
+                <p className="absolute bottom-[90px] left-[150px] text-[14px]">
+                    {new Date().toLocaleDateString()}
                 </p>
 
-                {/* SIGNATURES */}
-                <div className="flex justify-between mt-20 text-sm">
-
-                  <div className="text-center">
-                    <img src="/sign.png" className="h-10 mx-auto" />
-                    <p>Controller of Examinations</p>
-                  </div>
-
-                  <div className="text-center">
-                    <img src="/sign.png" className="h-10 mx-auto" />
-                    <p>Registrar</p>
-                  </div>
+                {/* PHOTO (for PC) */}
+                {certType === "PC" && image && (
+                    <img
+                    src={image}
+                    className="absolute top-[180px] right-[120px] w-[100px] h-[120px]"
+                    />
+                )}
 
                 </div>
 
-              </div>
             </div>
           )}
 
